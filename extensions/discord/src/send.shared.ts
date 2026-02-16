@@ -374,6 +374,48 @@ async function sendDiscordMedia(
     media.fileName ||
     (media.contentType ? `upload${extensionForMime(media.contentType) ?? ""}` : "") ||
     "upload";
+  return sendDiscordMediaBuffer(
+    rest,
+    channelId,
+    text,
+    {
+      buffer: media.buffer,
+      fileName: resolvedFileName,
+      contentType: media.contentType,
+    },
+    replyTo,
+    request,
+    maxLinesPerMessage,
+    components,
+    embeds,
+    chunkMode,
+    silent,
+    maxChars,
+  );
+}
+
+async function sendDiscordMediaBuffer(
+  rest: RequestClient,
+  channelId: string,
+  text: string,
+  media: {
+    buffer: Buffer;
+    fileName?: string;
+    contentType?: string;
+  },
+  replyTo: string | undefined,
+  request: DiscordRequest,
+  maxLinesPerMessage?: number,
+  components?: DiscordSendComponents,
+  embeds?: DiscordSendEmbeds,
+  chunkMode?: ChunkMode,
+  silent?: boolean,
+  maxChars?: number,
+) {
+  const resolvedFileName =
+    media.fileName ||
+    (media.contentType ? `upload${extensionForMime(media.contentType) ?? ""}` : "") ||
+    "upload";
   const chunks = text
     ? buildDiscordTextChunks(text, { maxLinesPerMessage, chunkMode, maxChars })
     : [];
@@ -454,5 +496,6 @@ export {
   resolveDiscordTargetChannelId,
   resolveDiscordRest,
   sendDiscordMedia,
+  sendDiscordMediaBuffer,
   sendDiscordText,
 };

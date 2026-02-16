@@ -758,6 +758,18 @@ export const DiscordAccountSchema = z
       })
       .strict()
       .optional(),
+    mathImages: z
+      .object({
+        enabled: z.boolean().optional(),
+        delimiters: z.array(z.enum(["double-dollar", "bracket"])).optional(),
+        excludeCode: z.boolean().optional(),
+        formulaTextFormat: z.enum(["plain"]).optional(),
+        maxExpressionsPerReply: z.number().int().positive().optional(),
+        maxCharsPerExpression: z.number().int().positive().optional(),
+        maxImageWidthPx: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {

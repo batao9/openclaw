@@ -10,6 +10,7 @@ import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runti
 import { convertMarkdownTables } from "openclaw/plugin-sdk/text-chunking";
 import { resolveDiscordAccount } from "./accounts.js";
 import { createChannelMessage, createThread, type RequestClient } from "./internal/discord.js";
+import { buildDiscordMathSegments } from "./math-images.js";
 import { rewriteDiscordKnownMentions } from "./mentions.js";
 import { parseAndResolveRecipient } from "./recipient-resolution.js";
 import { createDiscordSendResult, type DiscordReceiptResultSource } from "./send.receipt.js";
@@ -25,6 +26,7 @@ import {
   resolveDiscordSendComponents,
   resolveDiscordSendEmbeds,
   sendDiscordMedia,
+  sendDiscordMediaBuffer,
   sendDiscordText,
   SUPPRESS_NOTIFICATIONS_FLAG,
   type DiscordSendComponents,
@@ -294,9 +296,104 @@ export async function sendMessageDiscord(
     );
   }
 
-  let result: DiscordChannelMessageResult;
+  let result: DiscordChannelMessageResult | undefined;
+  const mathSegments = await buildDiscordMathSegments(
+    textWithTables,
+    accountInfo.config.mathImages,
+  );
   try {
-    if (opts.mediaUrl) {
+    if (mathSegments.hasMathImages) {
+      let replyTo = opts.replyTo;
+      let components = opts.components;
+      let embeds = opts.embeds;
+      let delivered = false;
+
+      for (const segment of mathSegments.segments) {
+        if (segment.kind === "text") {
+          const segmentText = rewriteDiscordKnownMentions(segment.text, {
+            accountId: accountInfo.accountId,
+            mentionAliases: accountInfo.config.mentionAliases,
+          });
+          if (!segmentText.trim()) {
+            continue;
+          }
+          result = await sendDiscordText(
+            rest,
+            channelId,
+            segmentText,
+            replyTo,
+            request,
+            maxLinesPerMessage,
+            components,
+            embeds,
+            chunkMode,
+            opts.silent,
+            textLimit,
+          );
+        } else {
+          result = await sendDiscordMediaBuffer(
+            rest,
+            channelId,
+            segment.formulaText,
+            {
+              buffer: segment.imageBuffer,
+              fileName: segment.fileName,
+            },
+            replyTo,
+            request,
+            maxLinesPerMessage,
+            components,
+            embeds,
+            chunkMode,
+            opts.silent,
+            textLimit,
+          );
+        }
+        delivered = true;
+        replyTo = undefined;
+        components = undefined;
+        embeds = undefined;
+      }
+
+      if (opts.mediaUrl) {
+        result = await sendDiscordMedia(
+          rest,
+          channelId,
+          "",
+          opts.mediaUrl,
+          opts.filename,
+          opts.mediaAccess,
+          opts.mediaLocalRoots,
+          opts.mediaReadFile,
+          mediaMaxBytes,
+          delivered ? undefined : replyTo,
+          request,
+          maxLinesPerMessage,
+          delivered ? undefined : components,
+          delivered ? undefined : embeds,
+          chunkMode,
+          opts.silent,
+          textLimit,
+        );
+        delivered = true;
+      }
+
+      if (!delivered) {
+        result = await sendDiscordText(
+          rest,
+          channelId,
+          textWithMentions,
+          opts.replyTo,
+          request,
+          maxLinesPerMessage,
+          opts.components,
+          opts.embeds,
+          chunkMode,
+          opts.silent,
+          textLimit,
+        );
+      }
+    } else if (opts.mediaUrl) {
       result = await sendDiscordMedia(
         rest,
         channelId,
@@ -337,8 +434,12 @@ export async function sendMessageDiscord(
       cfg,
       rest,
       token,
-      hasMedia: Boolean(opts.mediaUrl),
+      hasMedia: Boolean(opts.mediaUrl) || mathSegments.hasMathImages,
     });
+  }
+
+  if (!result) {
+    throw new Error("Discord send failed (no outbound result)");
   }
 
   recordChannelActivity({
