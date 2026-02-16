@@ -47,6 +47,7 @@ import type { OpenClawConfig, loadConfig } from "../../config/config.js";
 import { isDangerousNameMatchingEnabled } from "../../config/dangerous-name-matching.js";
 import { resolveOpenProviderRuntimeGroupPolicy } from "../../config/runtime-group-policy.js";
 import { loadSessionStore, resolveStorePath } from "../../config/sessions.js";
+import type { DiscordMathImageConfig } from "../../config/types.discord.js";
 import { logVerbose } from "../../globals.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { getAgentScopedMediaLocalRoots } from "../../media/local-roots.js";
@@ -57,6 +58,7 @@ import { chunkItems } from "../../utils/chunk-items.js";
 import { withTimeout } from "../../utils/with-timeout.js";
 import { loadWebMedia } from "../../web/media.js";
 import { chunkDiscordTextWithMode } from "../chunk.js";
+import { buildDiscordMathSegments } from "../math-images.js";
 import {
   isDiscordGroupAllowedByPolicy,
   normalizeDiscordSlug,
@@ -1709,6 +1711,7 @@ async function dispatchDiscordCommandInteraction(params: {
             maxLinesPerMessage: discordConfig?.maxLinesPerMessage,
             preferFollowUp: preferFollowUp || didReply,
             chunkMode: resolveChunkMode(cfg, "discord", accountId),
+            mathImagesConfig: discordConfig?.mathImages,
           });
         } catch (error) {
           if (isDiscordUnknownInteraction(error)) {
@@ -1766,10 +1769,12 @@ async function deliverDiscordInteractionReply(params: {
   maxLinesPerMessage?: number;
   preferFollowUp: boolean;
   chunkMode: "length" | "newline";
+  mathImagesConfig?: DiscordMathImageConfig;
 }) {
   const { interaction, payload, textLimit, maxLinesPerMessage, preferFollowUp, chunkMode } = params;
   const mediaList = payload.mediaUrls ?? (payload.mediaUrl ? [payload.mediaUrl] : []);
   const text = payload.text ?? "";
+  const mathSegments = await buildDiscordMathSegments(text, params.mathImagesConfig);
 
   let hasReplied = false;
   const sendMessage = async (content: string, files?: { name: string; data: Buffer }[]) => {
@@ -1796,6 +1801,60 @@ async function deliverDiscordInteractionReply(params: {
       hasReplied = true;
     });
   };
+
+  const sendTextChunks = async (value: string) => {
+    if (!value.trim()) {
+      return;
+    }
+    const chunks = chunkDiscordTextWithMode(value, {
+      maxChars: textLimit,
+      maxLines: maxLinesPerMessage,
+      chunkMode,
+    });
+    if (!chunks.length && value) {
+      chunks.push(value);
+    }
+    for (const chunk of chunks) {
+      if (!chunk.trim()) {
+        continue;
+      }
+      await sendMessage(chunk);
+    }
+  };
+
+  if (mathSegments.hasMathImages) {
+    for (const segment of mathSegments.segments) {
+      if (segment.kind === "text") {
+        await sendTextChunks(segment.text);
+        continue;
+      }
+      await sendMessage(segment.formulaText, [
+        {
+          name: segment.fileName,
+          data: segment.imageBuffer,
+        },
+      ]);
+    }
+    if (mediaList.length > 0) {
+      try {
+        const media = await Promise.all(
+          mediaList.map(async (url) => {
+            const loaded = await loadWebMedia(url, {
+              localRoots: params.mediaLocalRoots,
+            });
+            return {
+              name: loaded.fileName ?? "upload",
+              data: loaded.buffer,
+            };
+          }),
+        );
+        await sendMessage("", media);
+      } catch (err) {
+        console.error(`discord: interaction media load/send failed: ${String(err)}`);
+      }
+    }
+    return;
+  }
 
   if (mediaList.length > 0) {
     const media = await Promise.all(
@@ -1828,21 +1887,5 @@ async function deliverDiscordInteractionReply(params: {
     return;
   }
 
-  if (!text.trim()) {
-    return;
-  }
-  const chunks = chunkDiscordTextWithMode(text, {
-    maxChars: textLimit,
-    maxLines: maxLinesPerMessage,
-    chunkMode,
-  });
-  if (!chunks.length && text) {
-    chunks.push(text);
-  }
-  for (const chunk of chunks) {
-    if (!chunk.trim()) {
-      continue;
-    }
-    await sendMessage(chunk);
-  }
+  await sendTextChunks(text);
 }

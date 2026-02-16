@@ -191,6 +191,26 @@ export type DiscordSlashCommandConfig = {
   ephemeral?: boolean;
 };
 
+export type DiscordMathImageDelimiter = "double-dollar" | "bracket";
+export type DiscordMathImageTextFormat = "plain";
+
+export type DiscordMathImageConfig = {
+  /** Enable math-to-image rendering in outbound Discord replies. Default: true. */
+  enabled?: boolean;
+  /** Supported block delimiters. Default: ["double-dollar", "bracket"]. */
+  delimiters?: DiscordMathImageDelimiter[];
+  /** Skip formula detection inside fenced/inline code spans. Default: true. */
+  excludeCode?: boolean;
+  /** Formula caption format when attaching images. Default: plain. */
+  formulaTextFormat?: DiscordMathImageTextFormat;
+  /** Max rendered expressions per reply; extras remain plain text. Default: 8. */
+  maxExpressionsPerReply?: number;
+  /** Max chars per expression; longer formulas remain plain text. Default: 1200. */
+  maxCharsPerExpression?: number;
+  /** Max output image width in pixels. Default: 2048. */
+  maxImageWidthPx?: number;
+};
+
 export type DiscordAutoPresenceConfig = {
   /** Enable automatic runtime/quota-based Discord presence updates. Default: false. */
   enabled?: boolean;
@@ -354,6 +374,8 @@ export type DiscordAccountConfig = {
     /** Max concurrent event processing operations. Default: 50. */
     maxConcurrency?: number;
   };
+  /** Render block math formulas to images in Discord outbound messages. */
+  mathImages?: DiscordMathImageConfig;
 };
 
 export type DiscordConfig = {

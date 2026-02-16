@@ -5,6 +5,7 @@ import {
   __resetDiscordDirectoryCacheForTest,
   rememberDiscordDirectoryUser,
 } from "./directory-cache.js";
+import { buildDiscordMathSegments } from "./math-images.js";
 import {
   deleteMessageDiscord,
   editMessageDiscord,
@@ -25,6 +26,24 @@ vi.mock("../web/media.js", async () => {
   const { discordWebMediaMockFactory } = await import("./send.test-harness.js");
   return discordWebMediaMockFactory();
 });
+
+vi.mock("./math-images.js", () => ({
+  buildDiscordMathSegments: vi.fn(async (text: string) => ({
+    hasMathImages: false,
+    segments: [{ kind: "text", text }],
+    config: {
+      enabled: true,
+      delimiters: ["double-dollar", "bracket"] as Array<"double-dollar" | "bracket">,
+      excludeCode: true,
+      formulaTextFormat: "plain" as const,
+      maxExpressionsPerReply: 8,
+      maxCharsPerExpression: 1200,
+      maxImageWidthPx: 2048,
+    },
+  })),
+}));
+
+const buildDiscordMathSegmentsMock = vi.mocked(buildDiscordMathSegments);
 
 describe("sendMessageDiscord", () => {
   function expectReplyReference(
@@ -68,6 +87,19 @@ describe("sendMessageDiscord", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     __resetDiscordDirectoryCacheForTest();
+    buildDiscordMathSegmentsMock.mockImplementation(async (text: string) => ({
+      hasMathImages: false,
+      segments: [{ kind: "text", text }],
+      config: {
+        enabled: true,
+        delimiters: ["double-dollar", "bracket"],
+        excludeCode: true,
+        formulaTextFormat: "plain",
+        maxExpressionsPerReply: 8,
+        maxCharsPerExpression: 1200,
+        maxImageWidthPx: 2048,
+      },
+    }));
   });
 
   it("sends basic channel messages", async () => {
@@ -351,6 +383,101 @@ describe("sendMessageDiscord", () => {
     });
     expectReplyReference(firstBody, "orig-123");
     expectReplyReference(secondBody, "orig-123");
+  });
+
+  it("sends math image segments in source order", async () => {
+    const { rest, postMock } = makeDiscordRest();
+    postMock.mockResolvedValue({ id: "msg1", channel_id: "789" });
+    buildDiscordMathSegmentsMock.mockResolvedValue({
+      hasMathImages: true,
+      segments: [
+        { kind: "text", text: "before" },
+        {
+          kind: "math-image",
+          formulaText: "$$x^2$$",
+          expression: "x^2",
+          imageBuffer: Buffer.from("png"),
+          fileName: "equation-1.png",
+        },
+        { kind: "text", text: "after" },
+      ],
+      config: {
+        enabled: true,
+        delimiters: ["double-dollar", "bracket"],
+        excludeCode: true,
+        formulaTextFormat: "plain",
+        maxExpressionsPerReply: 8,
+        maxCharsPerExpression: 1200,
+        maxImageWidthPx: 2048,
+      },
+    });
+
+    await sendMessageDiscord("channel:789", "before $$x^2$$ after", {
+      rest,
+      token: "t",
+      replyTo: "orig-123",
+    });
+
+    expect(postMock).toHaveBeenCalledTimes(3);
+    const firstBody = postMock.mock.calls[0]?.[1]?.body;
+    const secondBody = postMock.mock.calls[1]?.[1]?.body;
+    const thirdBody = postMock.mock.calls[2]?.[1]?.body;
+    expect(firstBody?.content).toBe("before");
+    expect(firstBody?.message_reference).toEqual({
+      message_id: "orig-123",
+      fail_if_not_exists: false,
+    });
+    expect(secondBody?.content).toBe("$$x^2$$");
+    expect(secondBody?.message_reference).toBeUndefined();
+    expect(secondBody?.files).toEqual([expect.objectContaining({ name: "equation-1.png" })]);
+    expect(thirdBody?.content).toBe("after");
+    expect(thirdBody?.message_reference).toBeUndefined();
+  });
+
+  it("sends existing media after math segments", async () => {
+    const { rest, postMock } = makeDiscordRest();
+    postMock.mockResolvedValue({ id: "msg1", channel_id: "789" });
+    buildDiscordMathSegmentsMock.mockResolvedValue({
+      hasMathImages: true,
+      segments: [
+        {
+          kind: "math-image",
+          formulaText: "$$x^2$$",
+          expression: "x^2",
+          imageBuffer: Buffer.from("png"),
+          fileName: "equation-1.png",
+        },
+      ],
+      config: {
+        enabled: true,
+        delimiters: ["double-dollar", "bracket"],
+        excludeCode: true,
+        formulaTextFormat: "plain",
+        maxExpressionsPerReply: 8,
+        maxCharsPerExpression: 1200,
+        maxImageWidthPx: 2048,
+      },
+    });
+
+    await sendMessageDiscord("channel:789", "$$x^2$$", {
+      rest,
+      token: "t",
+      mediaUrl: "file:///tmp/photo.jpg",
+      replyTo: "orig-123",
+    });
+
+    expect(postMock).toHaveBeenCalledTimes(2);
+    const firstBody = postMock.mock.calls[0]?.[1]?.body;
+    const secondBody = postMock.mock.calls[1]?.[1]?.body;
+    expect(firstBody?.content).toBe("$$x^2$$");
+    expect(firstBody?.files).toEqual([expect.objectContaining({ name: "equation-1.png" })]);
+    expect(firstBody?.message_reference).toEqual({
+      message_id: "orig-123",
+      fail_if_not_exists: false,
+    });
+    expect(secondBody?.files).toEqual([expect.objectContaining({ name: "photo.jpg" })]);
+    expect(secondBody?.content).toBeUndefined();
+    expect(secondBody?.message_reference).toBeUndefined();
   });
 });
 
