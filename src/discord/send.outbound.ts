@@ -17,6 +17,7 @@ import { maxBytesForKind } from "../media/constants.js";
 import { extensionForMime } from "../media/mime.js";
 import { loadWebMediaRaw } from "../web/media.js";
 import { resolveDiscordAccount } from "./accounts.js";
+import { buildDiscordMathSegments } from "./math-images.js";
 import {
   buildDiscordMessagePayload,
   buildDiscordSendError,
@@ -29,6 +30,7 @@ import {
   resolveDiscordSendComponents,
   resolveDiscordSendEmbeds,
   sendDiscordMedia,
+  sendDiscordMediaBuffer,
   sendDiscordText,
   stripUndefinedFields,
   SUPPRESS_NOTIFICATIONS_FLAG,
@@ -226,9 +228,126 @@ export async function sendMessageDiscord(
     };
   }
 
-  let result: { id: string; channel_id: string } | { id: string | null; channel_id: string };
+  let result:
+    | { id: string; channel_id: string }
+    | { id: string | null; channel_id: string }
+    | undefined;
+  const mathSegments = await buildDiscordMathSegments(
+    textWithTables,
+    accountInfo.config.mathImages,
+  );
   try {
-    if (opts.mediaUrl || opts.mediaBuffer) {
+    if (mathSegments.hasMathImages) {
+      let replyTo = opts.replyTo;
+      let components = opts.components;
+      let embeds = opts.embeds;
+      let delivered = false;
+
+      for (const segment of mathSegments.segments) {
+        if (segment.kind === "text") {
+          if (!segment.text.trim()) {
+            continue;
+          }
+          result = await sendDiscordText(
+            rest,
+            channelId,
+            segment.text,
+            replyTo,
+            request,
+            accountInfo.config.maxLinesPerMessage,
+            components,
+            embeds,
+            chunkMode,
+            opts.silent,
+          );
+        } else {
+          result = await sendDiscordMediaBuffer(
+            rest,
+            channelId,
+            segment.formulaText,
+            {
+              buffer: segment.imageBuffer,
+              fileName: segment.fileName,
+            },
+            replyTo,
+            request,
+            accountInfo.config.maxLinesPerMessage,
+            components,
+            embeds,
+            chunkMode,
+            opts.silent,
+          );
+        }
+        delivered = true;
+        replyTo = undefined;
+        components = undefined;
+        embeds = undefined;
+      }
+
+      if (opts.mediaUrl || opts.mediaBuffer) {
+        result = await sendDiscordMedia(
+          rest,
+          channelId,
+          "",
+          opts.mediaUrl,
+          opts.mediaLocalRoots,
+          delivered ? undefined : replyTo,
+          request,
+          accountInfo.config.maxLinesPerMessage,
+          delivered ? undefined : components,
+          delivered ? undefined : embeds,
+          chunkMode,
+          opts.silent,
+          opts.mediaBuffer
+            ? {
+                buffer: opts.mediaBuffer,
+                fileName: opts.mediaFilename,
+                contentType: opts.mediaContentType,
+              }
+            : undefined,
+        );
+        delivered = true;
+      }
+
+      if (!delivered) {
+        if (opts.mediaUrl || opts.mediaBuffer) {
+          result = await sendDiscordMedia(
+            rest,
+            channelId,
+            textWithTables,
+            opts.mediaUrl,
+            opts.mediaLocalRoots,
+            opts.replyTo,
+            request,
+            accountInfo.config.maxLinesPerMessage,
+            opts.components,
+            opts.embeds,
+            chunkMode,
+            opts.silent,
+            opts.mediaBuffer
+              ? {
+                  buffer: opts.mediaBuffer,
+                  fileName: opts.mediaFilename,
+                  contentType: opts.mediaContentType,
+                }
+              : undefined,
+          );
+        } else {
+          result = await sendDiscordText(
+            rest,
+            channelId,
+            textWithTables,
+            opts.replyTo,
+            request,
+            accountInfo.config.maxLinesPerMessage,
+            opts.components,
+            opts.embeds,
+            chunkMode,
+            opts.silent,
+          );
+        }
+      }
+    } else if (opts.mediaUrl || opts.mediaBuffer) {
       result = await sendDiscordMedia(
         rest,
         channelId,
@@ -269,8 +388,12 @@ export async function sendMessageDiscord(
       channelId,
       rest,
       token,
-      hasMedia: Boolean(opts.mediaUrl || opts.mediaBuffer),
+      hasMedia: Boolean(opts.mediaUrl || opts.mediaBuffer) || mathSegments.hasMathImages,
     });
+  }
+
+  if (!result) {
+    throw new Error("Discord send failed (no outbound result)");
   }
 
   recordChannelActivity({

@@ -415,6 +415,42 @@ async function sendDiscordMedia(
         contentType: inlineMedia.contentType,
       }
     : await loadWebMedia(mediaUrl ?? "", { localRoots: mediaLocalRoots });
+  return sendDiscordMediaBuffer(
+    rest,
+    channelId,
+    text,
+    {
+      buffer: media.buffer,
+      fileName: media.fileName ?? "upload",
+      contentType: media.contentType,
+    },
+    replyTo,
+    request,
+    maxLinesPerMessage,
+    components,
+    embeds,
+    chunkMode,
+    silent,
+  );
+}
+
+async function sendDiscordMediaBuffer(
+  rest: RequestClient,
+  channelId: string,
+  text: string,
+  media: {
+    buffer: Buffer;
+    fileName?: string;
+    contentType?: string;
+  },
+  replyTo: string | undefined,
+  request: DiscordRequest,
+  maxLinesPerMessage?: number,
+  components?: DiscordSendComponents,
+  embeds?: DiscordSendEmbeds,
+  chunkMode?: ChunkMode,
+  silent?: boolean,
+) {
   const chunks = text ? buildDiscordTextChunks(text, { maxLinesPerMessage, chunkMode }) : [];
   const caption = chunks[0] ?? "";
   const messageReference = replyTo ? { message_id: replyTo, fail_if_not_exists: false } : undefined;
@@ -501,5 +537,6 @@ export {
   resolveChannelId,
   resolveDiscordRest,
   sendDiscordMedia,
+  sendDiscordMediaBuffer,
   sendDiscordText,
 };
