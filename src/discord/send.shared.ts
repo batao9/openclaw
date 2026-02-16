@@ -30,6 +30,12 @@ const DISCORD_CANNOT_DM = 50007;
 
 type DiscordRequest = RetryRunner;
 
+type DiscordInlineMedia = {
+  buffer: Buffer;
+  fileName?: string;
+  contentType?: string;
+};
+
 export type DiscordSendComponentFactory = (text: string) => TopLevelComponents[];
 export type DiscordSendComponents = TopLevelComponents[] | DiscordSendComponentFactory;
 export type DiscordSendEmbeds = Array<APIEmbed | Embed>;
@@ -391,7 +397,7 @@ async function sendDiscordMedia(
   rest: RequestClient,
   channelId: string,
   text: string,
-  mediaUrl: string,
+  mediaUrl: string | undefined,
   mediaLocalRoots: readonly string[] | undefined,
   replyTo: string | undefined,
   request: DiscordRequest,
@@ -400,8 +406,15 @@ async function sendDiscordMedia(
   embeds?: DiscordSendEmbeds,
   chunkMode?: ChunkMode,
   silent?: boolean,
+  inlineMedia?: DiscordInlineMedia,
 ) {
-  const media = await loadWebMedia(mediaUrl, { localRoots: mediaLocalRoots });
+  const media = inlineMedia
+    ? {
+        buffer: inlineMedia.buffer,
+        fileName: inlineMedia.fileName,
+        contentType: inlineMedia.contentType,
+      }
+    : await loadWebMedia(mediaUrl ?? "", { localRoots: mediaLocalRoots });
   const chunks = text ? buildDiscordTextChunks(text, { maxLinesPerMessage, chunkMode }) : [];
   const caption = chunks[0] ?? "";
   const messageReference = replyTo ? { message_id: replyTo, fail_if_not_exists: false } : undefined;
@@ -412,7 +425,9 @@ async function sendDiscordMedia(
   } else {
     const arrayBuffer = new ArrayBuffer(media.buffer.byteLength);
     new Uint8Array(arrayBuffer).set(media.buffer);
-    fileData = new Blob([arrayBuffer]);
+    fileData = media.contentType
+      ? new Blob([arrayBuffer], { type: media.contentType })
+      : new Blob([arrayBuffer]);
   }
   const captionComponents = resolveDiscordSendComponents({
     components,

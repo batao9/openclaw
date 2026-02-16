@@ -101,6 +101,32 @@ describe("handleDiscordMessageAction", () => {
     );
   });
 
+  it("forwards base64 attachment payload fields for send", async () => {
+    await handleDiscordMessageAction({
+      action: "send",
+      params: {
+        to: "channel:123",
+        message: "with file",
+        buffer: "aGVsbG8=",
+        contentType: "text/plain",
+        filename: "hello.txt",
+      },
+      cfg: {} as OpenClawConfig,
+    });
+
+    expect(handleDiscordAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "sendMessage",
+        to: "channel:123",
+        content: "with file",
+        buffer: "aGVsbG8=",
+        contentType: "text/plain",
+        filename: "hello.txt",
+      }),
+      expect.any(Object),
+    );
+  });
+
   it("falls back to params accountId when context missing", async () => {
     await handleDiscordMessageAction({
       action: "poll",

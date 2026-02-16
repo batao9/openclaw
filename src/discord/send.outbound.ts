@@ -45,6 +45,9 @@ type DiscordSendOpts = {
   token?: string;
   accountId?: string;
   mediaUrl?: string;
+  mediaBuffer?: Buffer;
+  mediaFilename?: string;
+  mediaContentType?: string;
   mediaLocalRoots?: readonly string[];
   verbose?: boolean;
   rest?: RequestClient;
@@ -150,7 +153,7 @@ export async function sendMessageDiscord(
     const remainingChunks = chunks.slice(1);
 
     try {
-      if (opts.mediaUrl) {
+      if (opts.mediaUrl || opts.mediaBuffer) {
         const [mediaCaption, ...afterMediaChunks] = remainingChunks;
         await sendDiscordMedia(
           rest,
@@ -165,6 +168,13 @@ export async function sendMessageDiscord(
           undefined,
           chunkMode,
           opts.silent,
+          opts.mediaBuffer
+            ? {
+                buffer: opts.mediaBuffer,
+                fileName: opts.mediaFilename,
+                contentType: opts.mediaContentType,
+              }
+            : undefined,
         );
         for (const chunk of afterMediaChunks) {
           await sendDiscordText(
@@ -201,7 +211,7 @@ export async function sendMessageDiscord(
         channelId: threadId,
         rest,
         token,
-        hasMedia: Boolean(opts.mediaUrl),
+        hasMedia: Boolean(opts.mediaUrl || opts.mediaBuffer),
       });
     }
 
@@ -218,7 +228,7 @@ export async function sendMessageDiscord(
 
   let result: { id: string; channel_id: string } | { id: string | null; channel_id: string };
   try {
-    if (opts.mediaUrl) {
+    if (opts.mediaUrl || opts.mediaBuffer) {
       result = await sendDiscordMedia(
         rest,
         channelId,
@@ -232,6 +242,13 @@ export async function sendMessageDiscord(
         opts.embeds,
         chunkMode,
         opts.silent,
+        opts.mediaBuffer
+          ? {
+              buffer: opts.mediaBuffer,
+              fileName: opts.mediaFilename,
+              contentType: opts.mediaContentType,
+            }
+          : undefined,
       );
     } else {
       result = await sendDiscordText(
@@ -252,7 +269,7 @@ export async function sendMessageDiscord(
       channelId,
       rest,
       token,
-      hasMedia: Boolean(opts.mediaUrl),
+      hasMedia: Boolean(opts.mediaUrl || opts.mediaBuffer),
     });
   }
 

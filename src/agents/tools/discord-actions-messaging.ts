@@ -57,6 +57,25 @@ export async function handleDiscordMessagingAction(
   params: Record<string, unknown>,
   isActionEnabled: ActionGate<DiscordActionConfig>,
 ): Promise<AgentToolResult<unknown>> {
+  const decodeBase64Attachment = (raw: string): { buffer: Buffer; contentType?: string } => {
+    const trimmed = raw.trim();
+    const dataUrlMatch = /^data:([^;]+);base64,(.*)$/i.exec(trimmed);
+    const contentType = dataUrlMatch?.[1]?.trim() || undefined;
+    const payload = dataUrlMatch ? dataUrlMatch[2] : trimmed;
+    const compact = payload.replace(/\s+/g, "");
+    if (!compact) {
+      throw new Error("Attachment buffer is empty.");
+    }
+    if (!/^[A-Za-z0-9+/=]+$/.test(compact)) {
+      throw new Error("Attachment buffer must be base64.");
+    }
+    const decoded = Buffer.from(compact, "base64");
+    if (decoded.byteLength === 0) {
+      throw new Error("Attachment buffer decoded to empty data.");
+    }
+    return { buffer: decoded, contentType };
+  };
+
   const resolveChannelId = () =>
     resolveDiscordChannelId(
       readStringParam(params, "channelId", {
@@ -252,6 +271,12 @@ export async function handleDiscordMessagingAction(
         readStringParam(params, "mediaUrl", { trim: false }) ??
         readStringParam(params, "path", { trim: false }) ??
         readStringParam(params, "filePath", { trim: false });
+      const rawBuffer = readStringParam(params, "buffer", { trim: false });
+      const requestedContentType =
+        readStringParam(params, "contentType") ?? readStringParam(params, "mimeType");
+      const decodedAttachment = rawBuffer ? decodeBase64Attachment(rawBuffer) : null;
+      const mediaBuffer = decodedAttachment?.buffer;
+      const mediaContentType = requestedContentType ?? decodedAttachment?.contentType;
       const filename = readStringParam(params, "filename");
       const replyTo = readStringParam(params, "replyTo");
       const rawEmbeds = params.embeds;
@@ -308,6 +333,9 @@ export async function handleDiscordMessagingAction(
       const result = await sendMessageDiscord(to, content ?? "", {
         ...(accountId ? { accountId } : {}),
         mediaUrl,
+        mediaBuffer,
+        mediaFilename: filename ?? undefined,
+        mediaContentType,
         replyTo,
         components,
         embeds,
