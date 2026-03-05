@@ -1,6 +1,7 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { DiscordActionConfig } from "../../config/config.js";
+import type { DiscordActionConfig, OpenClawConfig } from "../../config/config.js";
 import type { DiscordSendComponents, DiscordSendEmbeds } from "../../discord/send.shared.js";
+import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { readDiscordComponentSpec } from "../../discord/components.js";
 import {
   createThreadDiscord,
@@ -25,6 +26,7 @@ import {
   unpinMessageDiscord,
 } from "../../discord/send.js";
 import { resolveDiscordChannelId } from "../../discord/targets.js";
+import { getAgentScopedMediaLocalRoots } from "../../media/local-roots.js";
 import { withNormalizedTimestamp } from "../date-time.js";
 import { assertMediaNotDataUrl } from "../sandbox-paths.js";
 import {
@@ -56,6 +58,7 @@ export async function handleDiscordMessagingAction(
   action: string,
   params: Record<string, unknown>,
   isActionEnabled: ActionGate<DiscordActionConfig>,
+  cfg: OpenClawConfig = {},
 ): Promise<AgentToolResult<unknown>> {
   const decodeBase64Attachment = (raw: string): { buffer: Buffer; contentType?: string } => {
     const trimmed = raw.trim();
@@ -285,6 +288,9 @@ export async function handleDiscordMessagingAction(
         : undefined;
       const sessionKey = readStringParam(params, "__sessionKey");
       const agentId = readStringParam(params, "__agentId");
+      const scopedAgentId =
+        agentId ?? (sessionKey ? resolveSessionAgentId({ sessionKey, config: cfg }) : undefined);
+      const mediaLocalRoots = getAgentScopedMediaLocalRoots(cfg, scopedAgentId);
 
       if (componentSpec) {
         if (asVoice) {
@@ -304,6 +310,7 @@ export async function handleDiscordMessagingAction(
           sessionKey: sessionKey ?? undefined,
           agentId: agentId ?? undefined,
           mediaUrl: mediaUrl ?? undefined,
+          mediaLocalRoots,
           filename: filename ?? undefined,
         });
         return jsonResult({ ok: true, result, components: true });
@@ -336,6 +343,7 @@ export async function handleDiscordMessagingAction(
         mediaBuffer,
         mediaFilename: filename ?? undefined,
         mediaContentType,
+        mediaLocalRoots,
         replyTo,
         components,
         embeds,

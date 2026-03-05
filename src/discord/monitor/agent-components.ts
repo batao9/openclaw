@@ -19,6 +19,7 @@ import {
 import { ButtonStyle, ChannelType } from "discord-api-types/v10";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { DiscordAccountConfig } from "../../config/types.discord.js";
+import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import { resolveHumanDelayConfig } from "../../agents/identity.js";
 import { resolveChunkMode, resolveTextChunkLimit } from "../../auto-reply/chunk.js";
 import { formatInboundEnvelope, resolveEnvelopeFormatOptions } from "../../auto-reply/envelope.js";
@@ -32,6 +33,7 @@ import { readSessionUpdatedAt, resolveStorePath } from "../../config/sessions.js
 import { logVerbose } from "../../globals.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { logDebug, logError } from "../../logger.js";
+import { getAgentScopedMediaLocalRoots } from "../../media/local-roots.js";
 import { buildPairingReply } from "../../pairing/pairing-messages.js";
 import {
   readChannelAllowFromStore,
@@ -817,6 +819,8 @@ async function dispatchDiscordComponentEvent(params: {
     channel: "discord",
     accountId,
   });
+  const workspaceDir = resolveAgentWorkspaceDir(ctx.cfg, agentId);
+  const mediaLocalRoots = getAgentScopedMediaLocalRoots(ctx.cfg, agentId);
   const textLimit = resolveTextChunkLimit(ctx.cfg, "discord", accountId, {
     fallbackLimit: 2000,
   });
@@ -847,6 +851,8 @@ async function dispatchDiscordComponentEvent(params: {
           replyToId,
           textLimit,
           maxLinesPerMessage: ctx.discordConfig?.maxLinesPerMessage,
+          workspaceDir,
+          mediaLocalRoots,
           tableMode,
           chunkMode: resolveChunkMode(ctx.cfg, "discord", accountId),
         });

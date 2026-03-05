@@ -1,6 +1,7 @@
 import { ChannelType } from "@buape/carbon";
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import type { DiscordMessagePreflightContext } from "./message-handler.preflight.js";
+import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import { resolveAckReaction, resolveHumanDelayConfig } from "../../agents/identity.js";
 import { resolveChunkMode } from "../../auto-reply/chunk.js";
 import { dispatchInboundMessage } from "../../auto-reply/dispatch.js";
@@ -22,6 +23,7 @@ import { createTypingCallbacks } from "../../channels/typing.js";
 import { resolveMarkdownTableMode } from "../../config/markdown-tables.js";
 import { readSessionUpdatedAt, resolveStorePath } from "../../config/sessions.js";
 import { danger, logVerbose, shouldLogVerbose } from "../../globals.js";
+import { getAgentScopedMediaLocalRoots } from "../../media/local-roots.js";
 import { buildAgentSessionKey } from "../../routing/resolve-route.js";
 import { resolveThreadSessionKeys } from "../../routing/session-key.js";
 import { buildUntrustedChannelMetadata } from "../../security/channel-metadata.js";
@@ -358,6 +360,8 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
     channel: "discord",
     accountId,
   });
+  const workspaceDir = resolveAgentWorkspaceDir(cfg, route.agentId);
+  const mediaLocalRoots = getAgentScopedMediaLocalRoots(cfg, route.agentId);
 
   const { dispatcher, replyOptions, markDispatchIdle } = createReplyDispatcherWithTyping({
     ...prefixOptions,
@@ -374,6 +378,8 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
         replyToId,
         textLimit,
         maxLinesPerMessage: discordConfig?.maxLinesPerMessage,
+        workspaceDir,
+        mediaLocalRoots,
         tableMode,
         chunkMode: resolveChunkMode(cfg, "discord", accountId),
       });

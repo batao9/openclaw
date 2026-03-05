@@ -1,4 +1,5 @@
 import type { RequestClient } from "@buape/carbon";
+import path from "node:path";
 import type { ChunkMode } from "../../auto-reply/chunk.js";
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import type { MarkdownTableMode } from "../../config/types.base.js";
@@ -7,11 +8,34 @@ import { convertMarkdownTables } from "../../markdown/tables.js";
 import { chunkDiscordTextWithMode } from "../chunk.js";
 import { sendMessageDiscord } from "../send.js";
 
+const HTTP_URL_RE = /^https?:\/\//i;
+const FILE_URL_RE = /^file:\/\//i;
+const WINDOWS_ABS_RE = /^[a-zA-Z]:[\\/]/;
+
+function resolveWorkspaceRelativeMediaUrl(mediaUrl: string, workspaceDir?: string): string {
+  const trimmed = mediaUrl.trim();
+  if (!trimmed || !workspaceDir) {
+    return mediaUrl;
+  }
+  if (
+    HTTP_URL_RE.test(trimmed) ||
+    FILE_URL_RE.test(trimmed) ||
+    path.isAbsolute(trimmed) ||
+    WINDOWS_ABS_RE.test(trimmed) ||
+    trimmed.startsWith("~")
+  ) {
+    return mediaUrl;
+  }
+  return path.resolve(workspaceDir, trimmed);
+}
+
 export async function deliverDiscordReply(params: {
   replies: ReplyPayload[];
   target: string;
   token: string;
   accountId?: string;
+  workspaceDir?: string;
+  mediaLocalRoots?: readonly string[];
   rest?: RequestClient;
   runtime: RuntimeEnv;
   textLimit: number;
@@ -51,6 +75,7 @@ export async function deliverDiscordReply(params: {
           token: params.token,
           rest: params.rest,
           accountId: params.accountId,
+          mediaLocalRoots: params.mediaLocalRoots,
           replyTo: isFirstChunk ? replyTo : undefined,
         });
         isFirstChunk = false;
@@ -62,19 +87,23 @@ export async function deliverDiscordReply(params: {
     if (!firstMedia) {
       continue;
     }
+    const firstMediaResolved = resolveWorkspaceRelativeMediaUrl(firstMedia, params.workspaceDir);
     await sendMessageDiscord(params.target, text, {
       token: params.token,
       rest: params.rest,
-      mediaUrl: firstMedia,
+      mediaUrl: firstMediaResolved,
       accountId: params.accountId,
+      mediaLocalRoots: params.mediaLocalRoots,
       replyTo,
     });
     for (const extra of mediaList.slice(1)) {
+      const extraResolved = resolveWorkspaceRelativeMediaUrl(extra, params.workspaceDir);
       await sendMessageDiscord(params.target, "", {
         token: params.token,
         rest: params.rest,
-        mediaUrl: extra,
+        mediaUrl: extraResolved,
         accountId: params.accountId,
+        mediaLocalRoots: params.mediaLocalRoots,
       });
     }
   }

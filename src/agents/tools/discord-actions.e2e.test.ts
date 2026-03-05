@@ -1,5 +1,7 @@
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { DiscordActionConfig } from "../../config/config.js";
+import { resolveStateDir } from "../../config/paths.js";
 import { handleDiscordGuildAction } from "./discord-actions-guild.js";
 import { handleDiscordMessagingAction } from "./discord-actions-messaging.js";
 import { handleDiscordModerationAction } from "./discord-actions-moderation.js";
@@ -272,6 +274,54 @@ describe("handleDiscordMessagingAction", () => {
         enableAllActions,
       ),
     ).rejects.toThrow(/Voice messages cannot include text content/);
+  });
+
+  it("passes agent-scoped mediaLocalRoots when __agentId is provided", async () => {
+    sendMessageDiscord.mockClear();
+    await handleDiscordMessagingAction(
+      "sendMessage",
+      {
+        to: "channel:123",
+        content: "hello",
+        mediaUrl: "/tmp/output.png",
+        __agentId: "work",
+      },
+      enableAllActions,
+      {},
+    );
+    const expectedWorkspaceRoot = path.join(resolveStateDir(), "workspace-work");
+    expect(sendMessageDiscord).toHaveBeenCalledWith(
+      "channel:123",
+      "hello",
+      expect.objectContaining({
+        mediaUrl: "/tmp/output.png",
+        mediaLocalRoots: expect.arrayContaining([expectedWorkspaceRoot]),
+      }),
+    );
+  });
+
+  it("derives agent-scoped mediaLocalRoots from __sessionKey", async () => {
+    sendMessageDiscord.mockClear();
+    await handleDiscordMessagingAction(
+      "sendMessage",
+      {
+        to: "channel:123",
+        content: "hello",
+        mediaUrl: "/tmp/output.png",
+        __sessionKey: "agent:ops:main",
+      },
+      enableAllActions,
+      {},
+    );
+    const expectedWorkspaceRoot = path.join(resolveStateDir(), "workspace-ops");
+    expect(sendMessageDiscord).toHaveBeenCalledWith(
+      "channel:123",
+      "hello",
+      expect.objectContaining({
+        mediaUrl: "/tmp/output.png",
+        mediaLocalRoots: expect.arrayContaining([expectedWorkspaceRoot]),
+      }),
+    );
   });
 
   it("forwards optional thread content", async () => {
