@@ -1,4 +1,5 @@
 import { ChannelType, type RequestClient } from "@buape/carbon";
+import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import { resolveAckReaction, resolveHumanDelayConfig } from "../../agents/identity.js";
 import { EmbeddedBlockChunker } from "../../agents/pi-embedded-block-chunker.js";
 import { resolveChunkMode } from "../../auto-reply/chunk.js";
@@ -145,6 +146,7 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
     accountId,
   });
   const removeAckAfterReply = cfg.messages?.removeAckAfterReply ?? false;
+  const workspaceDir = resolveAgentWorkspaceDir(cfg, route.agentId);
   const mediaLocalRoots = getAgentScopedMediaLocalRoots(cfg, route.agentId);
   const shouldAckReaction = () =>
     Boolean(
@@ -692,6 +694,7 @@ export async function processDiscordMessage(ctx: DiscordMessagePreflightContext)
           chunkMode,
           sessionKey: ctxPayload.SessionKey,
           threadBindings,
+          workspaceDir,
           mediaLocalRoots,
         });
         replyReference.markSent();

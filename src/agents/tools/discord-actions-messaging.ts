@@ -1,4 +1,5 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import type { DiscordActionConfig } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import { readDiscordComponentSpec } from "../../discord/components.js";
@@ -26,6 +27,7 @@ import {
 } from "../../discord/send.js";
 import type { DiscordSendComponents, DiscordSendEmbeds } from "../../discord/send.shared.js";
 import { resolveDiscordChannelId } from "../../discord/targets.js";
+import { getAgentScopedMediaLocalRoots } from "../../media/local-roots.js";
 import { readBooleanParam } from "../../plugin-sdk/boolean-param.js";
 import { resolvePollMaxSelections } from "../../polls.js";
 import { withNormalizedTimestamp } from "../date-time.js";
@@ -56,6 +58,16 @@ function parseDiscordMessageLink(link: string) {
   };
 }
 
+function mergeMediaLocalRoots(
+  trustedRoots: readonly string[] | undefined,
+  scopedRoots: readonly string[] | undefined,
+): readonly string[] | undefined {
+  if (!trustedRoots?.length && !scopedRoots?.length) {
+    return undefined;
+  }
+  return [...new Set([...(trustedRoots ?? []), ...(scopedRoots ?? [])])];
+}
+
 export async function handleDiscordMessagingAction(
   action: string,
   params: Record<string, unknown>,
@@ -65,6 +77,7 @@ export async function handleDiscordMessagingAction(
   },
   cfg?: OpenClawConfig,
 ): Promise<AgentToolResult<unknown>> {
+  const resolvedCfg = cfg ?? {};
   const resolveChannelId = () =>
     resolveDiscordChannelId(
       readStringParam(params, "channelId", {
@@ -73,6 +86,17 @@ export async function handleDiscordMessagingAction(
     );
   const accountId = readStringParam(params, "accountId");
   const cfgOptions = cfg ? { cfg } : {};
+  const resolveMediaLocalRoots = (meta: { sessionKey?: string; agentId?: string }) => {
+    const scopedAgentId =
+      meta.agentId ??
+      (meta.sessionKey
+        ? resolveSessionAgentId({ sessionKey: meta.sessionKey, config: resolvedCfg })
+        : undefined);
+    const scopedRoots = scopedAgentId
+      ? getAgentScopedMediaLocalRoots(resolvedCfg, scopedAgentId)
+      : undefined;
+    return mergeMediaLocalRoots(options?.mediaLocalRoots, scopedRoots);
+  };
   const normalizeMessage = (message: unknown) => {
     if (!message || typeof message !== "object") {
       return message;
@@ -268,6 +292,10 @@ export async function handleDiscordMessagingAction(
         : undefined;
       const sessionKey = readStringParam(params, "__sessionKey");
       const agentId = readStringParam(params, "__agentId");
+      const mediaLocalRoots = resolveMediaLocalRoots({
+        sessionKey: sessionKey ?? undefined,
+        agentId: agentId ?? undefined,
+      });
 
       if (componentSpec) {
         if (asVoice) {
@@ -319,7 +347,7 @@ export async function handleDiscordMessagingAction(
         ...cfgOptions,
         ...(accountId ? { accountId } : {}),
         mediaUrl,
-        mediaLocalRoots: options?.mediaLocalRoots,
+        mediaLocalRoots,
         replyTo,
         components,
         embeds,
@@ -421,11 +449,15 @@ export async function handleDiscordMessagingAction(
       });
       const mediaUrl = readStringParam(params, "mediaUrl");
       const replyTo = readStringParam(params, "replyTo");
+      const mediaLocalRoots = resolveMediaLocalRoots({
+        sessionKey: readStringParam(params, "__sessionKey") ?? undefined,
+        agentId: readStringParam(params, "__agentId") ?? undefined,
+      });
       const result = await sendMessageDiscord(`channel:${channelId}`, content, {
         ...cfgOptions,
         ...(accountId ? { accountId } : {}),
         mediaUrl,
-        mediaLocalRoots: options?.mediaLocalRoots,
+        mediaLocalRoots,
         replyTo,
       });
       return jsonResult({ ok: true, result });

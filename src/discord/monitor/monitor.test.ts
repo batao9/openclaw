@@ -1,3 +1,4 @@
+import path from "node:path";
 import type {
   ButtonInteraction,
   ComponentData,
@@ -8,6 +9,7 @@ import type { Client } from "@buape/carbon";
 import type { GatewayPresenceUpdate } from "discord-api-types/v10";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/config.js";
+import { resolveStateDir } from "../../config/paths.js";
 import type { DiscordAccountConfig } from "../../config/types.discord.js";
 import { buildAgentSessionKey } from "../../routing/resolve-route.js";
 import {
@@ -359,6 +361,12 @@ describe("discord component interactions", () => {
     expect(dispatchReplyMock).toHaveBeenCalledTimes(1);
     expect(deliverDiscordReplyMock).toHaveBeenCalledTimes(1);
     expect(deliverDiscordReplyMock.mock.calls[0]?.[0]?.replyToId).toBe("msg-1");
+    expect(deliverDiscordReplyMock.mock.calls[0]?.[0]?.workspaceDir).toBe(
+      path.join(resolveStateDir(), "workspace-agent-1"),
+    );
+    expect(deliverDiscordReplyMock.mock.calls[0]?.[0]?.mediaLocalRoots).toEqual(
+      expect.arrayContaining([path.join(resolveStateDir(), "workspace-agent-1")]),
+    );
     expect(resolveDiscordComponentEntry({ id: "btn_1" })).toBeNull();
   });
 

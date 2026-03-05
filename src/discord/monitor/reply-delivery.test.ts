@@ -1,3 +1,4 @@
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeEnv } from "../../runtime.js";
 import { deliverDiscordReply } from "./reply-delivery.js";
@@ -452,6 +453,29 @@ describe("deliverDiscordReply", () => {
       "channel:parent-1",
       "Parent channel delivery",
       expect.objectContaining({ token: "token", accountId: "default" }),
+    );
+  });
+
+  it("resolves relative media paths against workspaceDir", async () => {
+    const workspaceDir = "/tmp/workspace-sdb";
+    await deliverDiscordReply({
+      replies: [{ text: "done", mediaUrl: "./out/discord_verify.txt" }],
+      target: "channel:123",
+      token: "token",
+      accountId: "default",
+      workspaceDir,
+      mediaLocalRoots: [workspaceDir],
+      runtime,
+      textLimit: 2000,
+    });
+
+    expect(sendMessageDiscordMock).toHaveBeenCalledWith(
+      "channel:123",
+      "done",
+      expect.objectContaining({
+        mediaUrl: path.join(workspaceDir, "out", "discord_verify.txt"),
+        mediaLocalRoots: [workspaceDir],
+      }),
     );
   });
 });

@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { RequestClient } from "@buape/carbon";
 import { resolveAgentAvatar } from "../../agents/identity-avatar.js";
 import type { ChunkMode } from "../../auto-reply/chunk.js";
@@ -81,6 +82,27 @@ function resolveTargetChannelId(target: string): string | undefined {
   }
   const channelId = target.slice("channel:".length).trim();
   return channelId || undefined;
+}
+
+const HTTP_URL_RE = /^https?:\/\//i;
+const FILE_URL_RE = /^file:\/\//i;
+const WINDOWS_ABS_RE = /^[a-zA-Z]:[\\/]/;
+
+function resolveWorkspaceRelativeMediaUrl(mediaUrl: string, workspaceDir?: string): string {
+  const trimmed = mediaUrl.trim();
+  if (!trimmed || !workspaceDir) {
+    return mediaUrl;
+  }
+  if (
+    HTTP_URL_RE.test(trimmed) ||
+    FILE_URL_RE.test(trimmed) ||
+    path.isAbsolute(trimmed) ||
+    WINDOWS_ABS_RE.test(trimmed) ||
+    trimmed.startsWith("~")
+  ) {
+    return mediaUrl;
+  }
+  return path.resolve(workspaceDir, trimmed);
 }
 
 function resolveBoundThreadBinding(params: {
@@ -192,18 +214,20 @@ async function sendAdditionalDiscordMedia(params: {
   rest?: RequestClient;
   accountId?: string;
   mediaUrls: string[];
+  workspaceDir?: string;
   mediaLocalRoots?: readonly string[];
   resolveReplyTo: () => string | undefined;
   retryConfig: ResolvedRetryConfig;
 }) {
   for (const mediaUrl of params.mediaUrls) {
     const replyTo = params.resolveReplyTo();
+    const mediaUrlResolved = resolveWorkspaceRelativeMediaUrl(mediaUrl, params.workspaceDir);
     await sendWithRetry(
       () =>
         sendMessageDiscord(params.target, "", {
           token: params.token,
           rest: params.rest,
-          mediaUrl,
+          mediaUrl: mediaUrlResolved,
           accountId: params.accountId,
           mediaLocalRoots: params.mediaLocalRoots,
           replyTo,
@@ -228,6 +252,7 @@ export async function deliverDiscordReply(params: {
   chunkMode?: ChunkMode;
   sessionKey?: string;
   threadBindings?: DiscordThreadBindingLookup;
+  workspaceDir?: string;
   mediaLocalRoots?: readonly string[];
 }) {
   const chunkLimit = Math.min(params.textLimit, 2000);
@@ -315,7 +340,8 @@ export async function deliverDiscordReply(params: {
     // Voice message path: audioAsVoice flag routes through sendVoiceMessageDiscord.
     if (payload.audioAsVoice) {
       const replyTo = resolveReplyTo();
-      await sendVoiceMessageDiscord(params.target, firstMedia, {
+      const firstMediaResolved = resolveWorkspaceRelativeMediaUrl(firstMedia, params.workspaceDir);
+      await sendVoiceMessageDiscord(params.target, firstMediaResolved, {
         token: params.token,
         rest: params.rest,
         accountId: params.accountId,
@@ -344,6 +370,7 @@ export async function deliverDiscordReply(params: {
         rest: params.rest,
         accountId: params.accountId,
         mediaUrls: mediaList.slice(1),
+        workspaceDir: params.workspaceDir,
         mediaLocalRoots: params.mediaLocalRoots,
         resolveReplyTo,
         retryConfig,
@@ -352,10 +379,11 @@ export async function deliverDiscordReply(params: {
     }
 
     const replyTo = resolveReplyTo();
+    const firstMediaResolved = resolveWorkspaceRelativeMediaUrl(firstMedia, params.workspaceDir);
     await sendMessageDiscord(params.target, text, {
       token: params.token,
       rest: params.rest,
-      mediaUrl: firstMedia,
+      mediaUrl: firstMediaResolved,
       accountId: params.accountId,
       mediaLocalRoots: params.mediaLocalRoots,
       replyTo,
@@ -367,6 +395,7 @@ export async function deliverDiscordReply(params: {
       rest: params.rest,
       accountId: params.accountId,
       mediaUrls: mediaList.slice(1),
+      workspaceDir: params.workspaceDir,
       mediaLocalRoots: params.mediaLocalRoots,
       resolveReplyTo,
       retryConfig,

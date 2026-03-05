@@ -17,6 +17,7 @@ import {
 } from "@buape/carbon";
 import type { APIStringSelectComponent } from "discord-api-types/v10";
 import { ButtonStyle, ChannelType } from "discord-api-types/v10";
+import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import { resolveHumanDelayConfig } from "../../agents/identity.js";
 import { resolveChunkMode, resolveTextChunkLimit } from "../../auto-reply/chunk.js";
 import { formatInboundEnvelope, resolveEnvelopeFormatOptions } from "../../auto-reply/envelope.js";
@@ -990,6 +991,7 @@ async function dispatchDiscordComponentEvent(params: {
     fallbackLimit: 2000,
   });
   const token = ctx.token ?? "";
+  const workspaceDir = resolveAgentWorkspaceDir(ctx.cfg, agentId);
   const mediaLocalRoots = getAgentScopedMediaLocalRoots(ctx.cfg, agentId);
   const replyToMode =
     ctx.discordConfig?.replyToMode ?? ctx.cfg.channels?.discord?.replyToMode ?? "off";
@@ -1020,6 +1022,7 @@ async function dispatchDiscordComponentEvent(params: {
           maxLinesPerMessage: ctx.discordConfig?.maxLinesPerMessage,
           tableMode,
           chunkMode: resolveChunkMode(ctx.cfg, "discord", accountId),
+          workspaceDir,
           mediaLocalRoots,
         });
         replyReference.markSent();
