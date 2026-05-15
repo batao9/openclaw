@@ -481,16 +481,28 @@ describe("runMessageAction media behavior", () => {
       }
     });
 
-    it("rejects host-local text attachments even when fs root expansion is enabled", async () => {
-      await restoreRealMediaLoader();
+    it.each([
+      {
+        fileName: "notes.txt",
+        content: "plain text attachment\n",
+        expectedContentType: "text/plain",
+      },
+      {
+        fileName: "example.ts",
+        content: "export const answer = 42;\n",
+        expectedContentType: "text/plain",
+      },
+    ])(
+      "allows host-local validated text/source attachment $fileName when fs root expansion is enabled",
+      async ({ fileName, content, expectedContentType }) => {
+        await restoreRealMediaLoader();
 
-      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "msg-attachment-text-"));
-      try {
-        const outsidePath = path.join(tempDir, "secret.txt");
-        await fs.writeFile(outsidePath, "secret", "utf8");
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "msg-attachment-text-"));
+        try {
+          const outsidePath = path.join(tempDir, fileName);
+          await fs.writeFile(outsidePath, content, "utf8");
 
-        await expect(
-          runMessageAction({
+          const result = await runMessageAction({
             cfg: {
               ...cfg,
               tools: { fs: { workspaceOnly: false } },
@@ -502,12 +514,17 @@ describe("runMessageAction media behavior", () => {
               media: outsidePath,
               message: "caption",
             },
-          }),
-        ).rejects.toThrow(/Host-local media sends only allow/i);
-      } finally {
-        await fs.rm(tempDir, { recursive: true, force: true });
-      }
-    });
+          });
+
+          const payload = requireActionPayload(result);
+          expect(payload.ok).toBe(true);
+          expect(payload.filename).toBe(fileName);
+          expect(payload.contentType).toBe(expectedContentType);
+        } finally {
+          await fs.rm(tempDir, { recursive: true, force: true });
+        }
+      },
+    );
 
     it("hydrates buffer and filename from media for attachment upload-file", async () => {
       const result = await runAttachmentRemoteMediaAction({ cfg, action: "upload-file" });

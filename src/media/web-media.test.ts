@@ -334,8 +334,24 @@ describe("loadWebMedia", () => {
     }
   });
 
-  it("rejects host-read text files outside local roots", async () => {
-    const secretFile = path.join(fixtureRoot, "secret.txt");
+  it.each([
+    { fileName: "notes.txt", contentType: "text/plain" },
+    { fileName: "script.ts", contentType: "text/plain" },
+  ])("allows host-read validated text/source file $fileName", async ({ fileName, contentType }) => {
+    const textFile = path.join(fixtureRoot, fileName);
+    await fs.writeFile(textFile, "export const value = 42;\n", "utf8");
+    const result = await loadWebMedia(textFile, {
+      maxBytes: 1024 * 1024,
+      localRoots: "any",
+      readFile: async (filePath) => await fs.readFile(filePath),
+      hostReadCapability: true,
+    });
+    expect(result.kind).toBe("document");
+    expect(result.contentType).toBe(contentType);
+  });
+
+  it("rejects host-read extensionless text files", async () => {
+    const secretFile = path.join(fixtureRoot, "secret");
     await fs.writeFile(secretFile, "secret", "utf8");
     await expectLoadWebMediaErrorCode(
       loadWebMedia(secretFile, {
@@ -447,9 +463,11 @@ describe("loadWebMedia", () => {
   });
 
   it.each([
+    { label: "Text", fileName: "opaque.txt" },
+    { label: "TypeScript", fileName: "opaque.ts" },
     { label: "CSV", fileName: "opaque.csv" },
     { label: "Markdown", fileName: "opaque.md" },
-  ])("rejects opaque non-NUL binary data disguised as %s", async ({ fileName }) => {
+  ])("rejects opaque non-NUL binary data disguised as $label", async ({ fileName }) => {
     const fakeTextFile = path.join(fixtureRoot, fileName);
     const opaqueBinary = Buffer.alloc(9000);
     for (let i = 0; i < opaqueBinary.length; i += 1) {
